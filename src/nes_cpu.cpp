@@ -1,222 +1,113 @@
-#include "cpu.hpp"
-#include "helper.hpp"
+#include "../inc/nes_cpu.hpp"
 
-#define ALU_OP(op,offset,mode)                              \
-            case alu_op_codes::op##_base + offset:          \
-                trace(#op,mode);                            \
-                op(mode);                                   \
-                break;
-
-#define IS_ALU(op) \
-            ALU_OP(op,0x01,addr_mode::indir_x);  \
-            ALU_OP(op,0x05,addr_mode::zp);       \
-            ALU_OP(op,0x09,addr_mode::imm);      \
-            ALU_OP(op,0x0D,addr_mode::abs_);     \
-            ALU_OP(op,0x11,addr_mode::indir_y);  \
-            ALU_OP(op,0x15,addr_mode::zp_x);     \
-            ALU_OP(op,0x19,addr_mode::abs_y);    \
-            ALU_OP(op,0x1D,addr_mode::abs_x);
-
-#define RMW_OP(op,offset,mode)  \
-            case rmw_op_codes::op##_base + offset:  \
-                trace(#op,mode);\
-                op(mode);                           \
-                break;                 
-
-#define IS_RMW(op)   \
-            RMW_OP(op,0x06,addr_mode::zp);       \
-            RMW_OP(op,0x0A,addr_mode::accum);      \
-            RMW_OP(op,0x0E,addr_mode::abs_);      \
-            RMW_OP(op,0x16,addr_mode::zp_x);     \
-            RMW_OP(op,0x1E,addr_mode::abs_x);
-
-#define IS_OP_MODE(op,opcode,mode) case opcode: \
-                                        trace(#op,mode);\
-                                        op(mode); \
-                                        break;
-
-#define IS_OP(op,opcode) case opcode:\
-                            trace(#op,addr_mode::impl);\
-                            op(addr_mode::impl);\
-                            break;
-
-Cpu::Cpu(){
+nes_cpu::nes_cpu(){
     A = 0;
     X = 0;
     Y = 0;
     P = 0x24;
     PC = PC_START;
-    S = STACK_START;
+    SP = STACK_START;
     cpu_cycle = 7;
     curr_cycle = 0;
-    _mem = Memory();
-    _mem.mount(CPU_ADDR_SPACE);
+    _mem = nullptr;
+    _nes_system = nullptr;
 }
 
-uint8_t Cpu::read(uint16_t i){
+nes_cpu::~nes_cpu(){}
+
+void nes_cpu::turn_on(nes_system *sys){
+    _nes_system = sys;
+    _mem = sys->mem();
+}
+
+void nes_cpu::reset(){}
+
+void nes_cpu::step_to(int _cycle){}
+/*
+    Memory read wrapper that adds a cycle
+*/
+uint8_t nes_cpu::read(uint16_t i){
     curr_cycle += 1;
-    return _mem.PEEK(i);
+    return _mem->PEEK(i);
 }
 
-void Cpu::write(uint16_t i, uint8_t val){
+/*
+    Memory write wrapper that adds a cycle
+*/
+void nes_cpu::write(uint16_t i, uint8_t val){
     curr_cycle += 1;
-    _mem.SET(i,val);
+    _mem->SET(i,val);
 }
 
-// void Cpu::add_cycles(addr_mode mode, bool pg_crossed){
-//     switch(mode){
-//         case addr_mode::accum:
-//             cpu_cycle += 2;
-//             break;
-
-//         case addr_mode::impl:
-//             break;
-
-//         case addr_mode::imm:
-//             break;
-
-        
-
-//         case addr_mode::zp:
-//             cycle_no += 5;
-//             break;
-
-//         case addr_mode::zp_x:
-//         case addr_mode::zp_y:
-//         case addr_mode::abs_:
-//             cycle_no += 6;
-//             break;
-
-//         case addr_mode::abs_x:
-//         case addr_mode::abs_y:
-//             cycle_no += 7;
-//             break;
-        
-//         case addr_mode::indir:
-//             break;
-
-//         case addr_mode::indir_x:
-//             break;
-        
-//         case addr_mode::indir_y:
-//             break;
-        
-//         case addr_mode::rel:
-//             break; 
-//     }
-// }
-
-void Cpu::trace(std::string op, addr_mode mode){
-    
-    std::cout<<std::uppercase<<std::hex<<std::setw(4)<<(int)(PC-1)<<"  "<<std::hex<<std::setw(2)<<(int)_mem.PEEK(PC-1)<<" ";
-    operand_t operand = decode_op(mode,true);
-    uint16_t val = read_op(operand); 
-    std::cout<<op<<" ";
-    switch(mode){
-        case addr_mode::accum:
-            std::cout<<"A\t\t\t\t\t";
-            break;
-
-        case addr_mode::impl:
-            std::cout<<"\t\t\t\t\t";
-            break;
-
-        case addr_mode::imm:
-            std::cout<<"#"<<std::uppercase<<std::hex<<"$"<<std::setw(2)<<operand.value<<"\t\t\t\t";
-
-            break;
-        case addr_mode::abs_:
-            std::cout<<std::uppercase<<std::hex<<"$"<<std::setw(4)<<operand.value<<"";
-            if(op!="JMP" && op!="JSR") std::cout<<"= "<<std::uppercase<<std::hex<<std::setw(2)<<(int)val<<"\t\t\t";
-            else std::cout<<"\t\t\t\t";
-            break;
-
-        case addr_mode::abs_x:
-            std::cout<<std::uppercase<<std::hex<<"$"<<std::setw(4)<<(int)operand.trace<<",X @ "<<std::setw(4)<<(int)operand.value<<" = "<<std::setw(2)<<(int)val<<"\t\t\t";
-            break;
-
-        case addr_mode::abs_y:
-            std::cout<<std::uppercase<<std::hex<<"$"<<std::setw(4)<<(int)operand.trace<<",Y @ "<<std::setw(4)<<(int)operand.value<<" = "<<std::setw(2)<<(int)val<<"\t\t\t";
-            break;
-
-        case addr_mode::zp:
-            std::cout<<std::uppercase<<std::hex<<"$"<<std::setw(2)<<(int)operand.value<<" = "<<std::setw(2)<<(int)val<<"\t\t\t";
-            break;
-
-        case addr_mode::zp_x:
-            std::cout<<std::uppercase<<std::hex<<"$"<<std::setw(2)<<(int)operand.trace<<", X @ "<<std::setw(2)<<(int)operand.value<<" = "<<std::setw(2)<<(int)val<<"\t\t";
-            break;
-        case addr_mode::zp_y:
-            std::cout<<std::uppercase<<std::hex<<"$"<<std::setw(2)<<(int)operand.trace<<", Y @ "<<std::setw(2)<<(int)operand.value<<" = "<<std::setw(2)<<(int)val<<"\t\t";
-            break;
-        
-        case addr_mode::indir:
-            std::cout<<std::uppercase<<std::hex<<"($"<<std::setw(4)<<(int)operand.trace<<") = "<<std::setw(4)<<(int)operand.value<<"\t\t";
-            break;
-
-        case addr_mode::indir_x:
-            std::cout<<std::uppercase<<std::hex<<"($"<<std::setw(2)<<(int)operand.trace<<",X) @ "
-                <<std::setw(2)<<(int)((operand.trace+X)%256)<<" = "<<std::setw(4)<<(int)operand.value<<" = "<<std::setw(2)<<(int)val<<"\t";
-            break;
-        
-        case addr_mode::indir_y:
-            std::cout<<std::uppercase<<std::hex<<"($"<<std::setw(2)<<(int)operand.trace<<"),Y = "
-                <<std::setw(4)<<(uint16_t)(operand.value-Y)<<" @ "<<std::setw(4)<<(int)operand.value<<" = "<<std::setw(2)<<(int)val<<"\t";
-            break;
-        
-        case addr_mode::rel:
-            std::cout<<std::uppercase<<std::hex<<"$"<<std::setw(2)<<PC+1+val<<"\t\t\t\t";
-            break;
-        
-    }
-
-    std::cout<<std::uppercase<<std::hex<<"A:"<<std::setw(2)<<(int)A<<" "<<"X:"<<std::setw(2)<<(int)X<<" "<<"Y:"
-        <<std::setw(2)<<(int)Y<<" "<<"P:"<<std::setw(2)<<(int)P<<" "<<"SP:"<<(int)(S-STACK_LEN)<<std::dec<<" CYC:"<<cpu_cycle<<std::endl;
-    curr_cycle = 1;
-    
+/*
+    Fetches instruciton opcode
+*/
+uint8_t nes_cpu::fetch_instr(){
+    return read(PC++);
 }
 
-operand_t Cpu::decode_op(addr_mode mode, bool trace/*=false*/){
+/*
+    Fetches extra bytes in little endian form
+*/
+uint16_t nes_cpu::fetch_op(int bytes){
+    uint16_t result = 0;
+
+    for(int i = 0; i<bytes; i++)
+        result |= (read(PC++) << (8*i));
+    
+    return result;
+}
+
+/*
+    Fetches extra bytes for current instruction
+    Determines address/value depending on addressing mode
+*/
+operand_t nes_cpu::decode_op(addr_mode mode, bool trace/*=false*/){
 
     operand_t operand;
     operand.page_boundary = false;
+
     switch(mode){
         case addr_mode::accum:
         case addr_mode::impl:
             operand.kind = operand_k::acc;
-            if(trace){
-                std::cout<<"       ";
-            }
+            if(trace) std::cout<<"       ";
             break;
         
         case addr_mode::imm:
         case addr_mode::rel:
             operand.kind = operand_k::immed;
             operand.value = fetch_op(1);
+
             if(trace){ 
                 PC -= 1;
                 std::cout<<std::uppercase<<std::hex<<std::setw(2)<<(int)(operand.value&0x00FF)<<"     ";
             }
+
             break;
         
         case addr_mode::zp:
             operand.kind = operand_k::addr;
             operand.trace = fetch_op(1);
             operand.value = zp_indexed(operand.trace,0);
+
             if(trace) {
                 PC -= 1;
                 std::cout<<std::uppercase<<std::hex<<std::setw(2)<<(int)(operand.trace&0x00FF)<<"     ";
             }
+
             break;
         
         case addr_mode::zp_x:
             operand.kind = operand_k::addr;
             operand.trace = fetch_op(1);
             operand.value = zp_indexed(operand.trace,X);
+
             if(trace) {
                 PC -= 1;
                 std::cout<<std::uppercase<<std::hex<<std::setw(2)<<(int)(operand.trace&0x00FF)<<"     ";
             }
+
             curr_cycle += 1;
             break;
         
@@ -224,10 +115,12 @@ operand_t Cpu::decode_op(addr_mode mode, bool trace/*=false*/){
             operand.kind = operand_k::addr;
             operand.trace = fetch_op(1);
             operand.value = zp_indexed(operand.trace,Y);
+
             if(trace) {
                 PC -= 1;
                 std::cout<<std::uppercase<<std::hex<<std::setw(2)<<(int)(operand.trace&0x00FF)<<"     ";
             }
+
             curr_cycle += 1;
             break;
         
@@ -235,19 +128,20 @@ operand_t Cpu::decode_op(addr_mode mode, bool trace/*=false*/){
             operand.kind = operand_k::addr;
             operand.trace = fetch_op(2);
             operand.value = abs_indexed(operand.trace,0);
+
             if(trace){ 
                 PC-=2;
                 std::cout<<std::uppercase<<std::hex<<std::setw(2)<<(int)(operand.trace & 0x00FF)<<" "<<
                     std::setw(2)<<(int)((operand.trace & 0xFF00)>>8)<<"  ";
             }
 
-            
             break;
         
         case addr_mode::abs_x:
             operand.kind = operand_k::addr;
             operand.trace = fetch_op(2);
             operand.value = abs_indexed(operand.trace,X);
+
             if(trace){ 
                 PC-=2;
                 std::cout<<std::uppercase<<std::hex<<std::setw(2)<<(int)(operand.trace & 0x00FF)<<" "<<
@@ -258,10 +152,12 @@ operand_t Cpu::decode_op(addr_mode mode, bool trace/*=false*/){
                 operand.page_boundary = true;
             
             break;
+        
         case addr_mode::abs_y:
             operand.kind = operand_k::addr;
             operand.trace = fetch_op(2);
             operand.value = abs_indexed(operand.trace,Y);
+
             if(trace){ 
                 PC-=2;
                 std::cout<<std::uppercase<<std::hex<<std::setw(2)<<(int)(operand.trace & 0x00FF)<<" "<<
@@ -277,21 +173,25 @@ operand_t Cpu::decode_op(addr_mode mode, bool trace/*=false*/){
             operand.kind = operand_k::addr;
             operand.trace = fetch_op(2);
             operand.value = indirect(operand.trace);
+
             if(trace){ 
                 PC-=2;
                 std::cout<<std::uppercase<<std::hex<<std::setw(2)<<(int)(operand.trace & 0x00FF)<<" "<<
                     std::setw(2)<<(int)((operand.trace & 0xFF00)>>8)<<"  ";
             }
+
             break;
         
         case addr_mode::indir_x:
             operand.kind = operand_k::addr;
             operand.trace = fetch_op(1);
             operand.value = dx(operand.trace);
+
             if(trace){ 
                 PC-=1;
                 std::cout<<std::uppercase<<std::hex<<std::setw(2)<<(int)(operand.trace & 0x00FF)<<"     ";
             }
+
             curr_cycle += 1;
             break;
         
@@ -299,12 +199,15 @@ operand_t Cpu::decode_op(addr_mode mode, bool trace/*=false*/){
             operand.kind = operand_k::addr;
             operand.trace = fetch_op(1);
             operand.value = dy(operand.trace);
+
             if(trace){ 
                 PC-=1;
                 std::cout<<std::uppercase<<std::hex<<std::setw(2)<<(int)(operand.trace & 0x00FF)<<"     ";
             }
+
             if((operand.value & 0xFF00) != ((operand.value-Y) & 0xFF00))
                 operand.page_boundary = true;
+            
             break;
     }
     
@@ -312,7 +215,10 @@ operand_t Cpu::decode_op(addr_mode mode, bool trace/*=false*/){
 
 }
 
-uint8_t Cpu::read_op(operand_t operand){
+/*
+    Return correct value from decoded operand
+*/
+uint8_t nes_cpu::read_op(operand_t operand){
 
     switch(operand.kind){
 
@@ -333,10 +239,14 @@ uint8_t Cpu::read_op(operand_t operand){
     return 0;
 }
 
-void Cpu::execute(){
+
+/*
+    Full instruction fetch/decode/execute cycle
+*/
+void nes_cpu::execute(){
+
     uint16_t old_PC = PC;
     curr_cycle = 0;
-    // std::cout<<"Curr PC = "<<std::hex<<(int)PC<<std::endl;
     uint8_t instr = fetch_instr();
     
     switch(instr){
@@ -492,24 +402,18 @@ void Cpu::execute(){
     }
 }
 
-void Cpu::cycle(){
+/*
+    Execution loop
+*/
+void nes_cpu::cycle(){
 
-    while(1){
-        //std::cout<<std::hex<<"Curr PC: "<<(int)(PC)<<std::endl;
+    while(1)
         execute();
-        // std::cout<<std::dec<<"A="<<(int)A<<std::endl;
-        // std::cout<<std::dec<<"X="<<(int)X<<std::endl;
-        // std::cout<<std::dec<<"Y="<<(int)Y<<std::endl;
-        // std::bitset<8> bin_P(P);
-        // std::cout<<"P="<<bin_P<<std::endl;
-        // std::cout<<"P=NV-BDIZC"<<std::endl;
-        // std::cout<<std::hex<<"S="<<(int)S<<std::endl;
-        // std::cout<<"----------------------------"<<std::endl;
-    }
+    
 }
 
-//Add with Carry
-void Cpu::ADC(addr_mode mode){
+// Add with Carry
+void nes_cpu::ADC(addr_mode mode){
 
     operand_t op = decode_op(mode);
     uint8_t val = read_op(op);
@@ -528,7 +432,7 @@ void Cpu::ADC(addr_mode mode){
 }
 
 // Binary AND
-void Cpu::AND(addr_mode mode){
+void nes_cpu::AND(addr_mode mode){
 
     operand_t op = decode_op(mode);
     uint8_t val = read_op(op);
@@ -540,7 +444,7 @@ void Cpu::AND(addr_mode mode){
 }
 
 // Arithmetic Shift Left
-void Cpu::ASL(addr_mode mode){
+void nes_cpu::ASL(addr_mode mode){
 
     operand_t op = decode_op(mode);
     uint8_t val = (uint16_t)read_op(op);
@@ -551,24 +455,22 @@ void Cpu::ASL(addr_mode mode){
         P ^= CLR_FLAG(GET_FLAG(P,CARRY),CARRY);
 
     val <<= 1;
+
     P ^= CALC_ZERO(GET_FLAG(P,ZERO),val);
     P ^= CALC_NEG(GET_FLAG(P,NEG),(signed char)val);
 
-    if(op.kind == operand_k::addr){
-        write(op.value, val);
-    }
+    if(op.kind == operand_k::addr) write(op.value, val);
+    else if(op.kind == operand_k::acc) A = val; 
 
-    else if(op.kind == operand_k::acc){
-        A = val; 
-    }
     curr_cycle += 1;
     if(mode == addr_mode::abs_x) curr_cycle += 1;
 }
 
 // Branch if Carry Clear
-void Cpu::BCC(addr_mode mode){
+void nes_cpu::BCC(addr_mode mode){
     operand_t op = decode_op(mode);
     signed char val = (signed char)read_op(op);
+
     if(!GET_FLAG(P,CARRY)){
         PC += val;
         curr_cycle += 1;
@@ -576,9 +478,10 @@ void Cpu::BCC(addr_mode mode){
 }
 
 // Branch if Carry Set
-void Cpu::BCS(addr_mode mode){
+void nes_cpu::BCS(addr_mode mode){
     operand_t op = decode_op(mode);
     signed char val = (signed char)read_op(op);
+
     if(GET_FLAG(P,CARRY)){
         PC += val;
         curr_cycle += 1;
@@ -586,21 +489,18 @@ void Cpu::BCS(addr_mode mode){
 }
 
 // Branch if Equal
-void Cpu::BEQ(addr_mode mode){
+void nes_cpu::BEQ(addr_mode mode){
     operand_t op = decode_op(mode);
     signed char val = (signed char)read_op(op);
+
     if(GET_FLAG(P,ZERO)){
-        if((PC-2) == PC+val){
-            //std::cout<<"Infinite loop at addr: "<<std::hex<<(int)op.value<<std::endl;
-            exit(1);
-        }
         PC += val;
         curr_cycle += 1;
     }
 }
 
 // Bit Test
-void Cpu::BIT(addr_mode mode){
+void nes_cpu::BIT(addr_mode mode){
     operand_t op = decode_op(mode);
     uint8_t val = read_op(op);
     uint8_t res = val & A;
@@ -620,9 +520,10 @@ void Cpu::BIT(addr_mode mode){
 }
 
 // Branch if Minus
-void Cpu::BMI(addr_mode mode){
+void nes_cpu::BMI(addr_mode mode){
     operand_t op = decode_op(mode);
     signed char val = (signed char)read_op(op);
+
     if(GET_FLAG(P,NEG)){
         PC += val;
         curr_cycle += 1;
@@ -630,10 +531,10 @@ void Cpu::BMI(addr_mode mode){
 }
 
 //Branch if Not Equal
-void Cpu::BNE(addr_mode mode){
+void nes_cpu::BNE(addr_mode mode){
     operand_t op = decode_op(mode);
     signed char val = (signed char)read_op(op);
-   // std::cout<<std::hex<<"BNE val: "<<(int)val<<std::endl;
+
     if(!GET_FLAG(P,ZERO)){
         PC += val;
         curr_cycle += 1;
@@ -641,9 +542,10 @@ void Cpu::BNE(addr_mode mode){
 }
 
 //Branch if Positive
-void Cpu::BPL(addr_mode mode){
+void nes_cpu::BPL(addr_mode mode){
     operand_t op = decode_op(mode);
     signed char val = (signed char)read_op(op);
+
     if(!GET_FLAG(P,NEG)){
         PC += val;
         curr_cycle += 1;
@@ -651,22 +553,20 @@ void Cpu::BPL(addr_mode mode){
 }
 
 // Force Interrupt
-void Cpu::BRK(addr_mode mode){
-    write(S--,(PC & 0xFF00)>>8);
-    write(S--,(PC & 0x00FF));
-    
-    write(S--,P);
-    // P |= (1<<4);
+void nes_cpu::BRK(addr_mode mode){
+    write(SP--,(PC & 0xFF00)>>8);
+    write(SP--,(PC & 0x00FF));
+    write(SP--,P);
 
     PC = read(0xFFFE) | (read(0xFFFF)<<8);
     curr_cycle += 1;
-    //std::cout<<std::hex<<"BRK...: "<<(int)read(0xFFFF)<<std::endl;
 }
 
 // Branch if Overflow Clear
-void Cpu::BVC(addr_mode mode){
+void nes_cpu::BVC(addr_mode mode){
     operand_t op = decode_op(mode);
     signed char val = (signed char)read_op(op);
+
     if(!GET_FLAG(P,OVR)){
         PC += val;
         curr_cycle += 1;
@@ -674,9 +574,10 @@ void Cpu::BVC(addr_mode mode){
 }
 
 // Branch if Overflow Set
-void Cpu::BVS(addr_mode mode){
+void nes_cpu::BVS(addr_mode mode){
     operand_t op = decode_op(mode);
     signed char val = (signed char)read_op(op);
+
     if(GET_FLAG(P,OVR)){
         PC += val;
         curr_cycle += 1;
@@ -684,74 +585,75 @@ void Cpu::BVS(addr_mode mode){
 }
 
 // Clear Carry Flag
-void Cpu::CLC(addr_mode mode){
+void nes_cpu::CLC(addr_mode mode){
     curr_cycle += 1;
     P ^= CLR_FLAG(GET_FLAG(P,CARRY),CARRY);
 }
 
 // Clear Decimal Mode
-void Cpu::CLD(addr_mode mode){
+void nes_cpu::CLD(addr_mode mode){
     curr_cycle += 1;
     P ^= CLR_FLAG(GET_FLAG(P,DECIM),DECIM);
 }
 
 // Clear Interrupt Disable
-void Cpu::CLI(addr_mode mode){
+void nes_cpu::CLI(addr_mode mode){
     curr_cycle += 1;
     P ^= CLR_FLAG(GET_FLAG(P,INTERR),INTERR);
 }
 
 // Clear Overflow Flag
-void Cpu::CLV(addr_mode mode){
+void nes_cpu::CLV(addr_mode mode){
     curr_cycle += 1;
     P ^= CLR_FLAG(GET_FLAG(P,OVR),OVR);
 }
 
 // Compare 
-void Cpu::CMP(addr_mode mode){
+void nes_cpu::CMP(addr_mode mode){
     operand_t op = decode_op(mode);
     uint8_t val = read_op(op);
     uint8_t res = A - val;
-    if(A>=val){
+
+    if(A>=val)
         P ^= SET_FLAG(GET_FLAG(P,CARRY),CARRY);
-    }else{
+    else
         P ^= CLR_FLAG(GET_FLAG(P,CARRY),CARRY);
-    }
+    
     P ^= CALC_ZERO(GET_FLAG(P,ZERO),(signed char)res);
     P^= CALC_NEG(GET_FLAG(P,NEG),(signed char)res);
     curr_cycle += op.page_boundary;
 }
 
 // Compare X Reister
-void Cpu::CPX(addr_mode mode){
+void nes_cpu::CPX(addr_mode mode){
     operand_t op = decode_op(mode);
     uint8_t val = read_op(op);
     uint8_t res = X - val;
-    if(X>=val){
+    if(X>=val)
         P ^= SET_FLAG(GET_FLAG(P,CARRY),CARRY);
-    }else{
+    else
         P ^= CLR_FLAG(GET_FLAG(P,CARRY),CARRY);
-    }
+    
     P ^= CALC_ZERO(GET_FLAG(P,ZERO),(signed char)res);
     P^= CALC_NEG(GET_FLAG(P,NEG),(signed char)res);
 }
 
 // Compare Y Register
-void Cpu::CPY(addr_mode mode){
+void nes_cpu::CPY(addr_mode mode){
     operand_t op = decode_op(mode);
     uint8_t val = read_op(op);
     uint8_t res = Y - val;
-    if(Y>=val){
+    if(Y>=val)
         P ^= SET_FLAG(GET_FLAG(P,CARRY),CARRY);
-    }else{
+    else
         P ^= CLR_FLAG(GET_FLAG(P,CARRY),CARRY);
-    }
+    
     P ^= CALC_ZERO(GET_FLAG(P,ZERO),(signed char)res);
-    P^= CALC_NEG(GET_FLAG(P,NEG),(signed char)res);
+    P ^= CALC_NEG(GET_FLAG(P,NEG),(signed char)res);
 }
 
 // Decremeent Memory
-void Cpu::DEC(addr_mode mode){
+void nes_cpu::DEC(addr_mode mode){
     operand_t op = decode_op(mode);
     uint8_t val = (uint8_t)read_op(op);
 
@@ -765,7 +667,7 @@ void Cpu::DEC(addr_mode mode){
 }
 
 // Decrement X Register
-void Cpu::DEX(addr_mode mode){
+void nes_cpu::DEX(addr_mode mode){
     X -= 1;
     P ^= CALC_ZERO(GET_FLAG(P,ZERO),X);
     P ^= CALC_NEG(GET_FLAG(P,NEG),(signed char)X);
@@ -773,106 +675,118 @@ void Cpu::DEX(addr_mode mode){
 }
 
 // Decrement Y Register
-void Cpu::DEY(addr_mode mode){
+void nes_cpu::DEY(addr_mode mode){
     Y -= 1;
+
     P ^= CALC_ZERO(GET_FLAG(P,ZERO),Y);
     P ^= CALC_NEG(GET_FLAG(P,NEG),(signed char)Y);
+
     curr_cycle += 1;
 }
 
 // Exclusive OR
-void Cpu::EOR(addr_mode mode){
+void nes_cpu::EOR(addr_mode mode){
     operand_t op = decode_op(mode);
     uint8_t val = (uint8_t)read_op(op);
     A ^= val;
+
     P ^= CALC_ZERO(GET_FLAG(P,ZERO),A);
     P ^= CALC_NEG(GET_FLAG(P,NEG),(signed char)A);
+
     curr_cycle += op.page_boundary;
 }
 
 // Increment Memory
-void Cpu::INC(addr_mode mode){
+void nes_cpu::INC(addr_mode mode){
     operand_t op = decode_op(mode);
     uint8_t val = read_op(op);
-
     write(op.value, val+1);
+
     P ^= CALC_ZERO(GET_FLAG(P,ZERO),(uint8_t)(val+1));
     P ^= CALC_NEG(GET_FLAG(P,NEG),(signed char)(val+1));
-    curr_cycle += 1;
+
     if(mode == addr_mode::abs_x) curr_cycle += 1;
+    curr_cycle += 1;
 }
 
 // Increment X Register
-void Cpu::INX(addr_mode mode){
+void nes_cpu::INX(addr_mode mode){
     X += 1;
+
     P ^= CALC_ZERO(GET_FLAG(P,ZERO),X);
     P ^= CALC_NEG(GET_FLAG(P,NEG),(signed char)X);
+
     curr_cycle += 1;
 }
 
 // Increment Y Register
-void Cpu::INY(addr_mode mode){
+void nes_cpu::INY(addr_mode mode){
     Y += 1;
+
     P ^= CALC_ZERO(GET_FLAG(P,ZERO),Y);
     P ^= CALC_NEG(GET_FLAG(P,NEG),(signed char)Y);
+
     curr_cycle += 1;
 }
 
 // Jump
-void Cpu::JMP(addr_mode mode){
+void nes_cpu::JMP(addr_mode mode){
     operand_t op = decode_op(mode);
     uint8_t val = read_op(op);
-    curr_cycle--;
-    //std::cout<<std::hex<<"Jump Val: "<<(int)op.value<<std::endl;
-    if((PC-3) == op.value){
-        //std::cout<<"Infinite loop at addr: "<<std::hex<<(int)op.value<<std::endl;
-        exit(1);
-    }
+    
     PC = op.value;
+    curr_cycle--;
 }
 
 // Jump to Subroutine
-void Cpu::JSR(addr_mode mode){
+void nes_cpu::JSR(addr_mode mode){
     operand_t op = decode_op(mode);
     uint16_t val = read_op(op);
+
     PC -= 1;
-    write(S--,(PC & 0xFF00)>>8);
-    write(S--,(PC & 0x00FF));
+    write(SP--,(PC & 0xFF00)>>8);
+    write(SP--,(PC & 0x00FF));
     PC = op.value;
 }
 
 // Load Accumulator
-void Cpu::LDA(addr_mode mode){
+void nes_cpu::LDA(addr_mode mode){
     operand_t op = decode_op(mode);
     uint8_t val = read_op(op);
     A = val;
+
     P ^= CALC_ZERO(GET_FLAG(P,ZERO),A);
     P ^= CALC_NEG(GET_FLAG(P,NEG),(signed char)A);
+
     curr_cycle += op.page_boundary;
 }
 
 // Load X Register
-void Cpu::LDX(addr_mode mode){
+void nes_cpu::LDX(addr_mode mode){
     operand_t op = decode_op(mode);
     signed char val = (signed char) read_op(op);
     X = val;
+
     P ^= CALC_ZERO(GET_FLAG(P,ZERO),X);
     P ^= CALC_NEG(GET_FLAG(P,NEG),(signed char)X);
+
     curr_cycle += op.page_boundary;
 }
 
 // Load Y Register
-void Cpu::LDY(addr_mode mode){
+void nes_cpu::LDY(addr_mode mode){
     operand_t op = decode_op(mode);
     signed char val = read_op(op);
     Y = val;
+
     P ^= CALC_ZERO(GET_FLAG(P,ZERO),Y);
     P ^= CALC_NEG(GET_FLAG(P,NEG),(signed char)Y);
+
     curr_cycle += op.page_boundary;
 }
 
 // Logical Right Shift
-void Cpu::LSR(addr_mode mode){
+void nes_cpu::LSR(addr_mode mode){
 
     operand_t op = decode_op(mode);
     uint8_t val = read_op(op);
@@ -888,67 +802,69 @@ void Cpu::LSR(addr_mode mode){
     P ^= CALC_ZERO(GET_FLAG(P,ZERO),val);
     P ^= CALC_NEG(GET_FLAG(P,NEG),(signed char)val);
     
-    if(op.kind == operand_k::addr){
+    if(op.kind == operand_k::addr)
         write(op.value, val);
-    }
-
-    else if(op.kind == operand_k::acc){
+    else if(op.kind == operand_k::acc)
         A = val; 
-    }
-    curr_cycle +=1;
+    
     if(mode == addr_mode::abs_x) curr_cycle += 1;
+    curr_cycle +=1;
 }
 
 // No Operation
-void Cpu::NOP(addr_mode mode){
+void nes_cpu::NOP(addr_mode mode){
     curr_cycle += 1;
     return;
 }
 
 // Logical Inclusive OR
-void Cpu::ORA(addr_mode mode){
+void nes_cpu::ORA(addr_mode mode){
     operand_t op = decode_op(mode);
     uint8_t val = read_op(op);
     A |= val;
+
     P ^= CALC_ZERO(GET_FLAG(P,ZERO),A);
     P ^= CALC_NEG(GET_FLAG(P,NEG),(signed char)A);
+
     curr_cycle += op.page_boundary;
 }
 
 // Push Accumulator
-void Cpu::PHA(addr_mode mode){
-    write(S--, A);
+void nes_cpu::PHA(addr_mode mode){
+    write(SP--, A);
     curr_cycle += 1;
 }
 
 // Push Processor Status (P)
-void Cpu::PHP(addr_mode mode){
-    write(S--, P ^ 0x10);
+void nes_cpu::PHP(addr_mode mode){
+    write(SP--, P ^ 0x10);
     curr_cycle += 1;
 }
 
 // Pull Accumulator
-void Cpu::PLA(addr_mode mode){
-    A = read(++S);
+void nes_cpu::PLA(addr_mode mode){
+    A = read(++SP);
+
     P ^= CALC_ZERO(GET_FLAG(P,ZERO),A);
     P ^= CALC_NEG(GET_FLAG(P,NEG),(signed char)A);
+
     curr_cycle += 2;
 }
 
 // Pull Processor Status (P)
-void Cpu::PLP(addr_mode mode){
-    P = read(++S) & 0xEF | 0x20;
+void nes_cpu::PLP(addr_mode mode){
+    P = read(++SP) & 0xEF | 0x20;
     curr_cycle += 2;
 }
 
 // Rotate Left
 
-void Cpu::ROL(addr_mode mode){
+void nes_cpu::ROL(addr_mode mode){
     operand_t op = decode_op(mode);
     uint8_t val = read_op(op);
-    
     uint8_t res = val << 1;
     res ^= (P & 0x1);
+
     if((val>>7) & 1)
         SET_FLAG(GET_FLAG(P,CARRY),CARRY);
     else 
@@ -956,26 +872,22 @@ void Cpu::ROL(addr_mode mode){
     P ^= CALC_ZERO(GET_FLAG(P,ZERO),res);
     P ^= CALC_NEG(GET_FLAG(P,NEG),(signed char)res);
 
-    if(op.kind == operand_k::addr){
-        write(op.value, res);
-    }
-        
-    else if(op.kind == operand_k::acc){
-        A = res;
-        
-    }
-    curr_cycle += 1;
+    if(op.kind == operand_k::addr)
+        write(op.value, res);   
+    else if(op.kind == operand_k::acc)
+        A = res;  
+    
     if(mode == addr_mode::abs_x) curr_cycle += 1;
+    curr_cycle += 1;
 }
 
 // Rotate Right
-void Cpu::ROR(addr_mode mode){
+void nes_cpu::ROR(addr_mode mode){
     operand_t op = decode_op(mode);
     uint8_t val = read_op(op);
-    
-
     uint8_t res = val >> 1;
     res |= ((P & 1)<<7);
+
     if(val & 1)
         P ^= SET_FLAG(GET_FLAG(P,CARRY),CARRY);
     else
@@ -983,194 +895,250 @@ void Cpu::ROR(addr_mode mode){
     P ^= CALC_ZERO(GET_FLAG(P,ZERO),res);
     P ^= CALC_NEG(GET_FLAG(P,NEG),(signed char)res);
 
-    if(op.kind == operand_k::addr){
+    if(op.kind == operand_k::addr)
         write(op.value, res);
-        
-    }
-    else if(op.kind == operand_k::acc){
+    else if(op.kind == operand_k::acc)
         A = res;
-        
-    }
-    curr_cycle += 1;
-    if(mode == addr_mode::abs_x) curr_cycle += 1;
     
+    if(mode == addr_mode::abs_x) curr_cycle += 1;
+    curr_cycle += 1;
 }
 
 // Return from Interrupt
-void Cpu::RTI(addr_mode mode){
-    P = read(++S) & 0xEF | 0x20;
-    uint8_t low = read(++S);
-    uint8_t high = read(++S);
+void nes_cpu::RTI(addr_mode mode){
+    P = read(++SP) & 0xEF | 0x20;
+    uint8_t low = read(++SP);
+    uint8_t high = read(++SP);
     PC = (high<<8) | (low);
+
     curr_cycle += 2;
-    //std::cout<<"RTI..."<<std::endl;
 }
 
 // Return from Subroutine
-void Cpu::RTS(addr_mode mode){
-    uint8_t low = read(++S);
-    uint8_t high = read(++S);
+void nes_cpu::RTS(addr_mode mode){
+    uint8_t low = read(++SP);
+    uint8_t high = read(++SP);
     PC = ((high<<8) | (low)) + 1;
+
     curr_cycle += 3;
 }
 
 // Subtract with Carry
-void Cpu::SBC(addr_mode mode){
+void nes_cpu::SBC(addr_mode mode){
     operand_t op = decode_op(mode);
     uint8_t val = ~(read_op(op));
     signed short res = A + val + GET_FLAG(P,CARRY);
-    uint8_t res_8 = A + val + GET_FLAG(P,CARRY);
+
     P ^= CLR_FLAG(GET_FLAG(P,CARRY),CARRY);
     if(res > 255)
         P ^= SET_FLAG(GET_FLAG(P,CARRY),CARRY);
     P ^= CALC_OVR(GET_FLAG(P,OVR),A,val,(uint8_t)res);
     P ^= CALC_ZERO(GET_FLAG(P,ZERO),(uint8_t)res);
     P ^= CALC_NEG(GET_FLAG(P,NEG),(signed char)res);
+
     A = (uint8_t)res;
     curr_cycle += op.page_boundary;
 }
 
 // Set Carry Flag
-void Cpu::SEC(addr_mode mode){
-    curr_cycle += 1;
+void nes_cpu::SEC(addr_mode mode){
     P ^= SET_FLAG(GET_FLAG(P,CARRY),CARRY);
+    curr_cycle += 1;
 }
 
 // Set Decimal Flag
-void Cpu::SED(addr_mode mode){
-    curr_cycle += 1;
+void nes_cpu::SED(addr_mode mode){
     P ^= SET_FLAG(GET_FLAG(P,DECIM),DECIM);
+    curr_cycle += 1;
 }
 
 // Set Interrupt Flag
-void Cpu::SEI(addr_mode mode){
-    curr_cycle += 1;
+void nes_cpu::SEI(addr_mode mode){
     P ^= SET_FLAG(GET_FLAG(P,INTERR),INTERR);
+    curr_cycle += 1;
 }
 
 // Store Accumulator
-void Cpu::STA(addr_mode mode){
+void nes_cpu::STA(addr_mode mode){
     operand_t op = decode_op(mode);
     write(op.value, A);
     if((mode == addr_mode::indir_y || mode == addr_mode::abs_y || mode == addr_mode::abs_x)) curr_cycle += 1;
 }
 
 // Store X Register
-void Cpu::STX(addr_mode mode){
+void nes_cpu::STX(addr_mode mode){
     operand_t op = decode_op(mode);
     write(op.value, X);
 }
 
 // Store Y Register
-void Cpu::STY(addr_mode mode){
+void nes_cpu::STY(addr_mode mode){
     operand_t op = decode_op(mode);
     write(op.value, Y);
 }
 
 // Transfer Accumulator to X
-void Cpu::TAX(addr_mode mode){
+void nes_cpu::TAX(addr_mode mode){
     X = A;
+
     P ^= CALC_ZERO(GET_FLAG(P,ZERO),X);
     P ^= CALC_NEG(GET_FLAG(P,NEG),(signed char)X);
+
     curr_cycle += 1;
 }
 
 // Transfer Accumulator to Y
-void Cpu::TAY(addr_mode mode){
+void nes_cpu::TAY(addr_mode mode){
     Y = A;
+
     P ^= CALC_ZERO(GET_FLAG(P,ZERO),Y);
     P ^= CALC_NEG(GET_FLAG(P,NEG),(signed char)Y);
+
     curr_cycle += 1;
 }
 
 // Transfer Stack Pointer to X
-void Cpu::TSX(addr_mode mode){
-    X = S;
+void nes_cpu::TSX(addr_mode mode){
+    X = SP;
+
     P ^= CALC_ZERO(GET_FLAG(P,ZERO),X);
     P ^= CALC_NEG(GET_FLAG(P,NEG),(signed char)X);
+
     curr_cycle += 1;
 }
 
 // Transfer X to Accumulator
-void Cpu::TXA(addr_mode mode){
+void nes_cpu::TXA(addr_mode mode){
     A = X;
+
     P ^= CALC_ZERO(GET_FLAG(P,ZERO),A);
     P ^= CALC_NEG(GET_FLAG(P,NEG),(signed char)A);
+
     curr_cycle += 1;
 }
 
 // Transfer X to Stack Pointer
-void Cpu::TXS(addr_mode mode){
-    S = X+STACK_LEN;
+void nes_cpu::TXS(addr_mode mode){
+    SP = X + STACK_LEN;
     curr_cycle += 1;
 }
 
 // Transfer Y to Accumulator
-void Cpu::TYA(addr_mode mode){
+void nes_cpu::TYA(addr_mode mode){
     A = Y;
+
     P ^= CALC_ZERO(GET_FLAG(P,ZERO),A);
     P ^= CALC_NEG(GET_FLAG(P,NEG),(signed char)A);
+
     curr_cycle += 1;
 }
 
-uint8_t Cpu::fetch_instr(){
-    return read(PC++);
-}
-
-uint16_t Cpu::fetch_op(int bytes){
-    uint16_t result = 0;
-    for(int i = 0; i<bytes; i++){
-        //std::cout<<std::hex<<"byte "<<(int)read(PC)<<std::endl;
-        result |= (read(PC++) << (8*i));
-    }
-    return result;
-}
-
 //helper functions for addresses
-uint16_t Cpu::zp_indexed(uint16_t arg, uint8_t reg){
+uint16_t nes_cpu::zp_indexed(uint16_t arg, uint8_t reg){
     return (arg + reg) % 256;
 }
 
-uint16_t Cpu::abs_indexed(uint16_t arg, uint8_t reg){
+uint16_t nes_cpu::abs_indexed(uint16_t arg, uint8_t reg){
     return (arg + reg);
 }
 
-uint16_t Cpu::indirect(uint16_t arg){
+uint16_t nes_cpu::indirect(uint16_t arg){
     uint16_t res = read(arg);
     if((arg & 0x00FF) == 0x00FF) res |= (read(arg&0xFF00) << 8);
     else res |= (read(arg+1)<<8);
     return res;
 }
 
-uint16_t Cpu::dx(uint16_t arg){
+uint16_t nes_cpu::dx(uint16_t arg){
     return read((arg + X) % 265) + read(((arg + X + 1) % 256)) * 256;
 }
 
-uint16_t Cpu::dy(uint16_t arg){
+uint16_t nes_cpu::dy(uint16_t arg){
     return read(arg) + read((arg + 1) % 256) * 256 + Y;
 }
 
-
-
-int Cpu::test_file(char* filename){
-    FILE *fileptr;
-    int filelen;
+/*
+    Prints out current execution and state of CPU
+*/
+void nes_cpu::op_trace(std::string op, addr_mode mode){
     
-    fileptr = fopen(filename, "r");
+    std::cout<<std::uppercase<<std::hex<<std::setw(4)<<(int)(PC-1)<<"  "<<std::hex<<std::setw(2)<<(int)_mem->PEEK(PC-1)<<" ";
+    operand_t operand = decode_op(mode,true);
+    uint16_t val = read_op(operand); 
+    std::cout<<op<<" ";
+    switch(mode){
+        case addr_mode::accum:
+            std::cout<<"A\t\t\t\t\t";
+            break;
 
-    fseek(fileptr,0,SEEK_END);
-    filelen = ftell(fileptr);
-    //std::cout<<"filelen: "<<filelen<<std::endl;
-    //if(filelen>MAX_PROGRAM_SIZE) return -1;
-    rewind(fileptr);
-    
-    for(int i = PROGRAM_OFFSET; i<(filelen+PROGRAM_OFFSET); i++){
-        _mem.SET(i, (uint8_t) fgetc(fileptr));
-        //printf("%X\n",buf[i]);
+        case addr_mode::impl:
+            std::cout<<"\t\t\t\t\t";
+            break;
+
+        case addr_mode::imm:
+            std::cout<<"#"<<std::uppercase<<std::hex<<"$"<<std::setw(2)<<operand.value<<"\t\t\t\t";
+
+            break;
+        case addr_mode::abs_:
+            std::cout<<std::uppercase<<std::hex<<"$"<<std::setw(4)<<operand.value<<"";
+            if(op!="JMP" && op!="JSR") std::cout<<"= "<<std::uppercase<<std::hex<<std::setw(2)<<(int)val<<"\t\t\t";
+            else std::cout<<"\t\t\t\t";
+            break;
+
+        case addr_mode::abs_x:
+            std::cout<<std::uppercase<<std::hex<<"$"<<std::setw(4)<<(int)operand.trace<<",X @ "<<
+                std::setw(4)<<(int)operand.value<<" = "<<std::setw(2)<<(int)val<<"\t\t\t";
+            break;
+
+        case addr_mode::abs_y:
+            std::cout<<std::uppercase<<std::hex<<"$"<<std::setw(4)<<(int)operand.trace<<",Y @ "<<
+                std::setw(4)<<(int)operand.value<<" = "<<std::setw(2)<<(int)val<<"\t\t\t";
+            break;
+
+        case addr_mode::zp:
+            std::cout<<std::uppercase<<std::hex<<"$"<<std::setw(2)<<(int)operand.value<<" = "
+                <<std::setw(2)<<(int)val<<"\t\t\t";
+            break;
+
+        case addr_mode::zp_x:
+            std::cout<<std::uppercase<<std::hex<<"$"<<std::setw(2)<<(int)operand.trace<<", X @ "
+                <<std::setw(2)<<(int)operand.value<<" = "<<std::setw(2)<<(int)val<<"\t\t";
+            break;
+        case addr_mode::zp_y:
+            std::cout<<std::uppercase<<std::hex<<"$"<<std::setw(2)<<(int)operand.trace<<", Y @ "
+                <<std::setw(2)<<(int)operand.value<<" = "<<std::setw(2)<<(int)val<<"\t\t";
+            break;
+        
+        case addr_mode::indir:
+            std::cout<<std::uppercase<<std::hex<<"($"<<std::setw(4)<<(int)operand.trace<<") = "
+                <<std::setw(4)<<(int)operand.value<<"\t\t";
+            break;
+
+        case addr_mode::indir_x:
+            std::cout<<std::uppercase<<std::hex<<"($"<<std::setw(2)<<(int)operand.trace<<",X) @ "
+                <<std::setw(2)<<(int)((operand.trace+X)%256)<<" = "<<std::setw(4)<<(int)operand.value
+                <<" = "<<std::setw(2)<<(int)val<<"\t";
+            break;
+        
+        case addr_mode::indir_y:
+            std::cout<<std::uppercase<<std::hex<<"($"<<std::setw(2)<<(int)operand.trace<<"),Y = "
+                <<std::setw(4)<<(uint16_t)(operand.value-Y)<<" @ "<<std::setw(4)<<(int)operand.value
+                <<" = "<<std::setw(2)<<(int)val<<"\t";
+            break;
+        
+        case addr_mode::rel:
+            std::cout<<std::uppercase<<std::hex<<"$"<<std::setw(2)<<PC+1+val<<"\t\t\t\t";
+            break;
+        
     }
+
+    std::cout<<std::uppercase<<std::hex<<"A:"<<std::setw(2)<<(int)A<<" "<<"X:"<<std::setw(2)<<(int)X
+        <<" "<<"Y:"<<std::setw(2)<<(int)Y<<" "<<"P:"<<std::setw(2)<<(int)P<<" "<<"SP:"<<(int)(SP-STACK_LEN)
+        <<std::dec<<" CYC:"<<cpu_cycle<<std::endl;
     
-    return 1;
-}  
+    curr_cycle = 1;
+    
+}
 
 
 

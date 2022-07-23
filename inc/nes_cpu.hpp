@@ -1,53 +1,34 @@
-#ifndef CPU_HPP
-#define CPU_HPP
+#ifndef NES_CPU_HPP_
+#define NES_CPU_HPP_
 
 #include <cstdint>
 #include <cstdio>
 #include <iostream>
 #include <bitset>
 #include <iomanip>
-#include "memory.hpp"
+#include "nes_memory.hpp"
+#include "nes_system.hpp"
+#include "nes_component.hpp"
+#include "helper.hpp"
 
 #define STACK_START 0x01FD
 #define STACK_LEN 0x100
 #define PC_START 0xC000
 #define PROGRAM_OFFSET 0x0
-
-// #define CARRY_FLAG(P) (P & 1)
-// #define ZERO_FLAG(P) ((P & (1<<1))>>1)
-// #define INTERR_FLAG(P) ((P & (1<<2))>>2)
-// #define DECIM_FLAG(P) ((P & (1<<3))>>3)
-// #define BREAK_FLAG(P) ((P & (1<<4))>>4)
-// #define V_FLAG(P) ((P & (1<<6))>>6)
-// #define NEG_FLAG(P) ((P & (1<<7))>>7)
-
-#define CARRY 0
-#define ZERO 1
-#define INTERR 2
-#define DECIM 3
-#define BREAK 4
-#define OVR 6
-#define NEG 7
-
-#define GET_FLAG(P,n) ((P & (1<<n))>>n)
-// #define SET_FLAG(P,n) (GET_FLAG(P,n)==1) ? 0 : (1<<n)
-// #define CLR_FLAG(P,n) (GET_FLAG(P,n)==1) ? (1<<n) : 0
-#define SET_FLAG(flag,n) (flag==1) ? 0 : (1<<n)
-#define CLR_FLAG(flag,n) (flag==1) ? (1<<n) : 0
-#define CALC_CARRY(flag,val) (((val&0x100)>>8) ? (1 - flag) : (flag))
-#define CALC_ZERO(flag,val) ((val==0) ? ((1 - flag)<<1) : (flag<<1))
-#define CALC_OVR(flag,a,operand,res) (((((~a^operand)) & (a ^ res) & 0x80)== 0x80) ? ((1 - flag)<<6) : (flag<<6))
-
-#define CALC_NEG(flag,val) ((val<0) ? ((1-flag)<<7) : (flag<<7))
-
 #define CPU_ADDR_SPACE 65536
 
+/*
+    3 possible operand types
+*/
 enum operand_k{
     immed,
     acc,
     addr
 };
 
+/*
+    Contains necessary information about a retrieved operand
+*/
 struct operand_t{
     uint16_t value;
     operand_k kind;
@@ -73,49 +54,59 @@ enum rmw_op_codes{
     ROR_base = 0x60
 };
 
+/*
+    NES addressing modes
+*/
 enum addr_mode{
-    imm,        //2 Bytes
-    zp,         //2 Bytes     
-    zp_x,       //2 Bytes
-    zp_y,       //2 Bytes
-    rel,        //2 Bytes
-    abs_,        //3 Bytes
-    abs_x,      //3 Bytes
-    abs_y,      //3 Bytes
-    indir,      //3 Bytes
-    indir_x,    //2 Bytes
-    indir_y,    //2 Bytes
-    accum,      //1 Bytes   
-    impl        //1 Bytes   
+    imm,        // 2 Bytes
+    zp,         // 2 Bytes     
+    zp_x,       // 2 Bytes
+    zp_y,       // 2 Bytes
+    rel,        // 2 Bytes
+    abs_,       // 3 Bytes
+    abs_x,      // 3 Bytes
+    abs_y,      // 3 Bytes
+    indir,      // 3 Bytes
+    indir_x,    // 2 Bytes
+    indir_y,    // 2 Bytes
+    accum,      // 1 Bytes   
+    impl        // 1 Bytes   
 };
 
-class Cpu{
+class nes_system;
+class nes_memory;
+
+class nes_cpu: public nes_component{
 private:
-    uint16_t PC; //program counter
-    uint16_t S; //stack pointer
-    uint8_t A; //accumulatort
-    uint8_t X; //X index register
-    uint8_t Y; //Y index register
-    uint8_t P; //flags register (N V - B D I Z C)
+    uint16_t PC;    // program counter
+    uint16_t SP;     // stack pointer
+    uint8_t A;      // accumulatort
+    uint8_t X;      // X index register
+    uint8_t Y;      // Y index register
+    uint8_t P;      // flags register (N V - B D I Z C)
     int cpu_cycle;
     int curr_cycle;
+    nes_system *_nes_system;
+      
     void execute();
-    void add_cycles(addr_mode mode, bool pg_crossed);
     uint8_t fetch_instr();
     uint16_t fetch_op(int bytes);
     operand_t decode_op(addr_mode _addr_mode, bool trace = false);
     uint8_t read_op(operand_t op);
-public:
-    Memory _mem;
-    Cpu();
-    //~Cpu();
-    int test_file(char* filename);
-    void cycle();
-
-private:
-    //CPU instructions
     void write(uint16_t i, uint8_t val);
     uint8_t read(uint16_t i);
+
+public:
+    nes_memory* _mem;  
+    nes_cpu();
+    ~nes_cpu();
+    void cycle();
+    virtual void turn_on(nes_system *sys);
+    virtual void reset();
+    virtual void step_to(int _cycle);
+
+private:
+    //6502 CPU Instruction Set
     void ADC(addr_mode mode); // Add with Carry
     void AND(addr_mode mode); // Logical AND
     void ASL(addr_mode mode); // Arithmetic Shift Left
@@ -173,12 +164,15 @@ private:
     void TXS(addr_mode mode); // Transfer X to Stack Pointer
     void TYA(addr_mode mode); // Transfer Y to Accumulator
 
-    uint16_t zp_indexed(uint16_t arg, uint8_t reg);
-    uint16_t abs_indexed(uint16_t arg, uint8_t reg);
-    uint16_t indirect(uint16_t arg);
-    uint16_t dx(uint16_t arg);
-    uint16_t dy(uint16_t arg);
-    void trace(std::string op, addr_mode mode);
+    // addressing modes' formulas
+    uint16_t zp_indexed(uint16_t arg, uint8_t reg);     //ZeroPage/ZeroPage,X/ZeroPage,Y modes
+    uint16_t abs_indexed(uint16_t arg, uint8_t reg);    //Absolute/Absolute,X/Absolute,Y modes
+    uint16_t indirect(uint16_t arg);                    //indirect mode  
+    uint16_t dx(uint16_t arg);                          //indexed indirect mode
+    uint16_t dy(uint16_t arg);                          //indirect index mode
+
+    // debug
+    void op_trace(std::string op, addr_mode mode);
 
 };
 

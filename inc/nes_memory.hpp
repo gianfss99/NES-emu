@@ -1,9 +1,14 @@
-#ifndef MEMORY_HPP
-#define MEMORY_HPP
-
+#ifndef MEMORY_HPP_
+#define MEMORY_HPP_
 
 #include <cstdint>
-#define MEM_LIMIT 65536
+#include "nes_system.hpp"
+#include "nes_component.hpp"
+#include <vector>
+
+using namespace std;
+
+#define MEM_LIMIT 0x10000
 
 /*
     CPU Memory Mapping:
@@ -18,20 +23,21 @@
     $4018-$401F     $0008       APU and I/O functionality that is normally disabled
     $4020-$FFFF     $BFEO       Cartridge space: PRG ROM, PRG RAM, and mapper registers
 */
-
-class Memory{
+class nes_system;
+class nes_memory: public nes_component{
 private:
     uint8_t *ram;
+    nes_system *_nes_system;
 
 public:
-    Memory();
-    //~Memory();
-    void mount(int address_space);
-    void SET(uint16_t i, uint8_t val);
-    uint8_t PEEK(uint16_t i);
-    uint8_t operator [](uint16_t i) const;
-    uint8_t & operator [](uint16_t i);
-    
+    nes_memory();
+    ~nes_memory();
+    void SET(uint16_t addr, uint8_t val);
+    uint8_t PEEK(uint16_t addr);
+    void SET_CHUNK(uint16_t addr, vector<uint8_t> chunk);
+    virtual void turn_on(nes_system *sys);
+    virtual void reset();
+    virtual void step_to(int _cycle);
 };
 
 #endif
