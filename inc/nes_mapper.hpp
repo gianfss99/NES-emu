@@ -13,9 +13,9 @@ class nes_system;
 class nes_memory;
 class nes_ppu;
 
-// struct mapper_flags{
-    
-// };
+struct mapper_flags{
+    bool vert_mirror;
+};
 
 /*
     base class for all mappers (just good practice, probably only implementing mapper 0 (nrom))
@@ -32,9 +32,10 @@ private:
     vector<uint8_t> prgrom;
     vector<uint8_t> chrrom;
     vector<uint8_t> trainer;
+    mapper_flags flags;
 
 public:
-    mapper_nrom(vector<uint8_t> _prgrom, vector<uint8_t> _chrrom, vector<uint8_t> trainer);
+    mapper_nrom(vector<uint8_t> _prgrom, vector<uint8_t> _chrrom, vector<uint8_t> trainer, mapper_flags _flags);
     virtual void load_ppu(nes_ppu &ppu);
     virtual void load_prg(nes_memory &mem);
     virtual void load_trainer(nes_memory &mem);
@@ -43,6 +44,7 @@ public:
 class nes_rom_loader{
 private:
     uint8_t header[16];
+    mapper_flags flags;
     ifstream rom;
     vector<uint8_t> prgrom;
     vector<uint8_t> chrrom;

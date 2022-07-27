@@ -5,10 +5,16 @@
 #include "nes_system.hpp"
 #include "nes_component.hpp"
 #include <vector>
+#include <cstdlib>
+#include <cstring>
 
 using namespace std;
 
 #define MEM_LIMIT 0x10000
+#define RAM_LIMIT 0x2000
+#define PPUREGS 0x4000
+#define IOREGS 0x4020
+
 
 /*
     CPU Memory Mapping:
@@ -24,10 +30,13 @@ using namespace std;
     $4020-$FFFF     $BFEO       Cartridge space: PRG ROM, PRG RAM, and mapper registers
 */
 class nes_system;
+class nes_ppu;
+
 class nes_memory: public nes_component{
 private:
-    uint8_t *ram;
+    vector<uint8_t> ram;
     nes_system *_nes_system;
+    nes_ppu *ppu;
 
 public:
     nes_memory();

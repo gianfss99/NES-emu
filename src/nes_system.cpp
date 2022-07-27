@@ -7,10 +7,12 @@
 nes_system::nes_system(){
     _nes_cpu = new nes_cpu();
     _nes_mem = new nes_memory();
+    _nes_ppu = new nes_ppu();
     _nes_mapper = nullptr;
     loader = nullptr;
     components.push_back(_nes_cpu);
     components.push_back(_nes_mem);
+    components.push_back(_nes_ppu);
 }
 
 void nes_system::init(char* rom){
@@ -40,6 +42,10 @@ void nes_system::run(){
 
 nes_cpu* nes_system::cpu(){
     return _nes_cpu;
+}
+
+nes_ppu* nes_system::ppu(){
+    return _nes_ppu;
 }
 
 nes_memory* nes_system::mem(){
