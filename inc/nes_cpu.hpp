@@ -73,6 +73,11 @@ enum addr_mode{
     impl        // 1 Bytes   
 };
 
+// struct dma_request{
+//     bool pending;
+//     uint8_t hi_byte;
+// };
+
 class nes_system;
 class nes_memory;
 
@@ -84,8 +89,12 @@ private:
     uint8_t X;      // X index register
     uint8_t Y;      // Y index register
     uint8_t P;      // flags register (N V - B D I Z C)
+    bool nmi_pending;
+    bool dma_pending;
+    //dma_request dma_req;
     int cpu_cycle;
     int curr_cycle;
+
     nes_system *_nes_system;
       
     void execute();
@@ -100,13 +109,19 @@ public:
     nes_memory* _mem;  
     nes_cpu();
     ~nes_cpu();
-    void cycle();
+    //void cycle();
     virtual void turn_on(nes_system *sys);
     virtual void reset();
-    virtual void step_to(int _cycle);
+    virtual void step_to(uint64_t master_cycle);
+    void set_NMI();
+    void NMI();
+    //void set_dma_req(uint8_t val);
+    void set_dma_req();
+    void DMA();
 
 private:
     //6502 CPU Instruction Set
+
     void ADC(addr_mode mode); // Add with Carry
     void AND(addr_mode mode); // Logical AND
     void ASL(addr_mode mode); // Arithmetic Shift Left
@@ -165,6 +180,7 @@ private:
     void TYA(addr_mode mode); // Transfer Y to Accumulator
 
     // addressing modes' formulas
+    
     uint16_t zp_indexed(uint16_t arg, uint8_t reg);     //ZeroPage/ZeroPage,X/ZeroPage,Y modes
     uint16_t abs_indexed(uint16_t arg, uint8_t reg);    //Absolute/Absolute,X/Absolute,Y modes
     uint16_t indirect(uint16_t arg);                    //indirect mode  

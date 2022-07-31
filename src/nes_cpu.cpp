@@ -22,9 +22,13 @@ void nes_cpu::turn_on(nes_system *sys){
 
 void nes_cpu::reset(){}
 
-void nes_cpu::step_to(int _cycle){}
+void nes_cpu::step_to(uint64_t master_cycle){
+    while(cpu_cycle < master_cycle){
+        execute();
+    }
+}
 /*
-    Memory read wrapper that adds a cycle
+    Memory read wrapper that adds a cycle.
 */
 uint8_t nes_cpu::read(uint16_t i){
     curr_cycle += 1;
@@ -32,7 +36,7 @@ uint8_t nes_cpu::read(uint16_t i){
 }
 
 /*
-    Memory write wrapper that adds a cycle
+    Memory write wrapper that adds a cycle.
 */
 void nes_cpu::write(uint16_t i, uint8_t val){
     curr_cycle += 1;
@@ -40,14 +44,14 @@ void nes_cpu::write(uint16_t i, uint8_t val){
 }
 
 /*
-    Fetches instruciton opcode
+    Fetches instruciton opcode.
 */
 uint8_t nes_cpu::fetch_instr(){
     return read(PC++);
 }
 
 /*
-    Fetches extra bytes in little endian form
+    Fetches extra bytes in little endian form.
 */
 uint16_t nes_cpu::fetch_op(int bytes){
     uint16_t result = 0;
@@ -59,8 +63,8 @@ uint16_t nes_cpu::fetch_op(int bytes){
 }
 
 /*
-    Fetches extra bytes for current instruction
-    Determines address/value depending on addressing mode
+    Fetches extra bytes for current instruction.
+    Determines address/value depending on addressing mode.
 */
 operand_t nes_cpu::decode_op(addr_mode mode, bool trace/*=false*/){
 
@@ -245,8 +249,24 @@ uint8_t nes_cpu::read_op(operand_t operand){
 */
 void nes_cpu::execute(){
 
-    uint16_t old_PC = PC;
+    
     curr_cycle = 0;
+
+    if(nmi_pending){
+        NMI();
+        nmi_pending = false;
+        cpu_cycle+=7;
+        return;
+    }
+
+    if(dma_pending){
+        DMA();
+        dma_pending = false;
+        cpu_cycle += curr_cycle;
+        return;
+    }
+    
+    uint16_t old_PC = PC;
     uint8_t instr = fetch_instr();
     
     switch(instr){
@@ -405,11 +425,48 @@ void nes_cpu::execute(){
 /*
     Execution loop
 */
-void nes_cpu::cycle(){
+// void nes_cpu::cycle(){
 
-    while(1)
-        execute();
+//     while(1)
+//         execute();
     
+// }
+
+void nes_cpu::set_NMI(){
+    nmi_pending = true;
+}
+
+/*
+    Stores PC and status flag, sets PC to interrupt vector FFFA-FFFB
+*/
+void nes_cpu::NMI(){
+    write(SP--,(PC & 0xFF00)>>8);
+    write(SP--,(PC & 0x00FF));
+    write(SP--,P ^ SET_FLAG(GET_FLAG(P,BFLAG),BFLAG));
+    P ^= SET_FLAG(GET_FLAG(P,INTERR),INTERR);
+
+    PC = read(0xFFFA) | (read(0xFFFB)<<8);
+}
+
+// void nes_cpu::set_dma_req(uint8_t val){
+//     dma_req.pending = true;
+//     dma_req.hi_byte = val;
+// }
+
+void nes_cpu::set_dma_req(){
+    dma_pending = true;
+}
+
+void nes_cpu::DMA(){
+    curr_cycle = 1;
+    if(cpu_cycle % 2) curr_cycle += 1;
+
+    uint16_t address = A<<8;
+
+    for(int i = 0; i<256; i++){
+        uint8_t val = read(address+i);
+        write(0x2004,val);
+    }
 }
 
 // Add with Carry
@@ -431,7 +488,7 @@ void nes_cpu::ADC(addr_mode mode){
     curr_cycle += op.page_boundary;
 }
 
-// Binary AND
+// Logical AND
 void nes_cpu::AND(addr_mode mode){
 
     operand_t op = decode_op(mode);
@@ -838,6 +895,7 @@ void nes_cpu::PHA(addr_mode mode){
 // Push Processor Status (P)
 void nes_cpu::PHP(addr_mode mode){
     write(SP--, P ^ 0x10);
+    //write(SP--, P | 0x10);
     curr_cycle += 1;
 }
 

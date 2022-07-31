@@ -46,7 +46,7 @@ public:
     void SET_CHUNK(uint16_t addr, vector<uint8_t> chunk);
     virtual void turn_on(nes_system *sys);
     virtual void reset();
-    virtual void step_to(int _cycle);
+    virtual void step_to(uint64_t master_cycle);
 };
 
 #endif

@@ -13,7 +13,7 @@ void nes_memory::turn_on(nes_system *sys){
 
 void nes_memory::reset(){}
 
-void nes_memory::step_to(int _cycle){}
+void nes_memory::step_to(uint64_t master_cycle){}
 
 /*
     Set a byte
@@ -23,27 +23,27 @@ void nes_memory::SET(uint16_t addr, uint8_t val){
         ram[addr] = val;
     }
     else if(addr < PPUREGS){
-        switch(addr % 0x8){
-            case 0x0:
-                ppu->PPUCTRL() = val;
+        switch(addr){
+            case 0x2000:
+                ppu->PPUCTRL_w(val);
                 break;
-            case 0x1:
-                ppu->PPUMASK() = val;
+            case 0x2001:
+                ppu->PPUMASK_w(val);
                 break;
-            case 0x3:
+            case 0x2003:
                 ppu->OAMADDR() = val;
                 break;
-            case 0x4:
+            case 0x2004:
                 ppu->OAMDATA() = val;
                 break;
-            case 0x5:
-                ppu->PPUSCROLL() = val;
+            case 0x2005:
+               // ppu->PPUSCROLL() = val;
                 break;
-            case 0x6:
-                ppu->update_PPUADDR(val);
+            case 0x2006:
+                ppu->PPUADDR_w(val);
                 break;
-            case 0x7:
-                ppu->PPUDATA() = val;
+            case 0x2007:
+                ppu->write_data(val);
                 break;
             default:
                 cout<<"INVALID WRITE TO REGISTER "<<std::hex<<0x2000+(addr%0x8)<<endl;
@@ -51,9 +51,9 @@ void nes_memory::SET(uint16_t addr, uint8_t val){
             
         }
     }else if(addr < IOREGS){
-        switch(addr % 0x20){
-            case 0x14:
-                ppu->OAMDMA() = val;
+        switch(addr){
+            case 0x4014:
+                ppu->OAMDMA_w(val);
                 break;
             default:
                 cout<<"INVALID WRITE TO REGISTER "<<std::hex<<addr<<endl;
@@ -73,13 +73,13 @@ uint8_t nes_memory::PEEK(uint16_t addr){
         return ram[addr];
     }
     else if(addr < PPUREGS){
-        switch(addr % 0x8){
-            case 0x2:
-                return ppu->PPUSTATUS();
-            case 0x4:
+        switch(addr){
+            case 0x2002:
+                return ppu->PPUSTATUS_r();
+            case 0x2004:
                 return ppu->OAMDATA();
-            case 0x7:
-                return ppu->PPUDATA();
+            case 0x2007:
+                return ppu->read_data();
             default:
                 cout<<"INVALID READ FROM REGISTER "<<std::hex<<0x2000+(addr%0x8)<<endl;
                 exit(1);
