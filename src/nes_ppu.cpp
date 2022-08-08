@@ -6,7 +6,8 @@ nes_ppu::nes_ppu(){
     chrrom.resize(CHROM_SIZE);
     palette_table.resize(PALETTE_SIZE);
     oam_data.resize(OAM_SIZE);
-    ppu_cycle = pixel = scanline = 0;
+    ppu_cycle = dot = 0;
+    scanline = -1;
 }
 
 nes_ppu::~nes_ppu(){
@@ -32,23 +33,316 @@ void nes_ppu::step_to(uint64_t master_cycle){
     }
 }
 
-void nes_ppu::process_pixel(){
-    pixel+=1;
-    if(pixel >= 341){
-        pixel = 0;
-        scanline += 1;
+uint8_t nes_ppu::cpu_read(uint16_t addr){
+    uint8_t data = 0x0;
+    switch (addr)
+    {
+        case 0x00: break;
+        case 0x01: break;
 
-        if(scanline == 241){
-            if(registers.PPUCTRL & 0x80){
-                registers.PPUSTATUS |= 0x80;
-                cpu->set_NMI();
+        case 0x02:
+            data = (registers.status & 0xE0) | (data_buffer & 0x1F);
+            address_latch = 0;
+            registers.status &= ~(0x80);
+            //std::cout<<"STATUS read"<<std::endl;
+            break;
+        case 0x03:
+            break;
+        case 0x04:
+            data = oam_data[oam_addr];
+            if(registers.status & 0x80 == 0) oam_addr++;
+            break;
+        case 0x05:
+            break;
+        case 0x06:
+            break;
+        case 0x07:
+            data = data_buffer;
+            data_buffer = ppu_read(vram_addr.reg);
+            if(vram_addr.reg >= 0x3F00) data = data_buffer;
+            vram_addr.reg += vram_increment();
+            break;
+    }
+
+    return data;
+}
+
+void nes_ppu::cpu_write(uint16_t addr, uint8_t data){
+    switch(addr){
+        case 0x00: //Control
+            registers.control = data;
+            tram_addr.nametable_x = registers.control & 0x1;
+            tram_addr.nametable_y = (registers.control & 0x2)>>1;
+            break;
+        case 0x01: // Mask
+            registers.mask = data;
+            break;
+        case 0x02: // Status
+            break;
+        case 0x03: // OAM Address
+            oam_addr = data;
+            break;
+        case 0x04: // OAM Data
+            oam_data[oam_addr++] = data;
+            break;
+        case 0x05: // Scroll
+            if(!address_latch){
+
+                fine_x = data & 0x07;
+                tram_addr.coarse_x = data >> 3;
+                address_latch = 1;
+            }else{
+                tram_addr.fine_y = data & 0x07;
+                tram_addr.coarse_y = data >> 3;
+                address_latch = 0;
+            }
+            break;
+        case 0x06:
+            if(!address_latch){
+                tram_addr.reg = (uint16_t)((data & 0x3F)<<8) | (tram_addr.reg & 0xFF);
+                address_latch = 1;
+            }else{
+                tram_addr.reg = (tram_addr.reg & 0xFF00) | data;
+                vram_addr = tram_addr;
+                address_latch = 0;
+            }
+            break;
+        case 0x07:
+                ppu_write(vram_addr.reg, data);
+                vram_addr.reg += vram_increment();
+                break;
+    }
+}
+
+void nes_ppu::ppu_write(uint16_t addr, uint8_t data){
+    addr &= 0x3FFF;
+    if(addr < 0x2000){
+        chrrom[addr] = data;
+    }else if(addr < 0x3F00){
+        vram[mirror_addr(addr)] = data;
+    }else{
+        palette_table[addr & 0x1F] = data;
+        std::cout<<std::hex<<"attr table write:"<<(uint16_t)data<<std::endl;
+    }
+}
+
+uint8_t nes_ppu::ppu_read(uint16_t addr){
+    uint8_t data = 0x00;
+    addr &= 0x3FFF;
+    if(addr < 0x2000){
+        
+        data = chrrom[addr];
+        
+    }else if(addr < 0x3F00){
+        
+        data = vram[mirror_addr(addr)];
+        
+    }else{
+        data = palette_table[addr & 0x1F];
+    }
+    return data;
+
+}
+
+void nes_ppu::process_pixel(){
+
+    auto TracePPU = [&](){
+        // std::cout<<std::hex<<"Ctrl:"<<(uint16_t)registers.control<<" Mask:"<<(uint16_t)registers.mask<<" Status:"<<(uint16_t)registers.status<<std::endl;
+        // std::cout<<std::hex<<"vram_addr:"<<vram_addr.reg<<" tram_addr:"<<tram_addr.reg<<std::endl;
+        // if(shift_reg.hi_tile > 0 || shift_reg.lo_tile>0)
+        //     std::cout<<std::hex<<"bg_lo_sh:"<<shift_reg.lo_tile<<" bg_hi_sh:"<<shift_reg.hi_tile<<std::endl;
+        if(shift_reg.hi_attr > 0 || shift_reg.lo_attr>0)
+            std::cout<<std::hex<<"attr_lo_sh:"<<shift_reg.lo_attr<<" attr_hi_sh:"<<shift_reg.hi_attr<<std::endl;
+        // std::cout<<std::dec<<"cycle: "<<ppu_cycle<<" dot:"<<dot<<" scanline:"<<scanline<<std::endl;
+        // std::cout<<"_________________________________________"<<std::endl;
+    };
+    
+    auto IncrementScrollX = [&](){
+        if (((registers.mask & RENDER_BG) > 0) || ((registers.mask & RENDER_SPRITE) > 0)){
+            if (vram_addr.coarse_x == 31){
+                vram_addr.coarse_x == 0;
+                vram_addr.nametable_x = ~vram_addr.nametable_x;
+            }
+            else{
+                vram_addr.coarse_x++;
+            }
+        }
+    };
+
+    auto IncrementScrollY = [&](){
+        if (((registers.mask & RENDER_BG) > 0) || ((registers.mask & RENDER_SPRITE) > 0)){
+            if(vram_addr.fine_y < 7){
+                vram_addr.fine_y++;
+            }
+            else{
+
+                vram_addr.fine_y = 0;
+                if(vram_addr.coarse_y == 29){
+                    vram_addr.coarse_y = 0;
+                    vram_addr.nametable_y = ~vram_addr.nametable_y;
+                }
+                else if(vram_addr.coarse_y == 31){
+                    vram_addr.coarse_y = 0;
+                }
+                else{
+                    vram_addr.coarse_y++;
+                }
+            }
+        }
+    };
+
+    auto TransferAddrX = [&](){
+        if (((registers.mask & RENDER_BG) > 0) || ((registers.mask & RENDER_SPRITE) > 0)){
+            vram_addr.nametable_x = tram_addr.nametable_x;
+			vram_addr.coarse_x    = tram_addr.coarse_x;
+        }
+    };
+
+    auto TransferAddrY = [&](){
+        if (((registers.mask & RENDER_BG) > 0) || ((registers.mask & RENDER_SPRITE) > 0)){
+            vram_addr.nametable_y = tram_addr.nametable_y;
+			vram_addr.coarse_y    = tram_addr.coarse_y;
+            vram_addr.fine_y = tram_addr.fine_y;
+        }
+    };
+
+    auto LoadNextTile = [&](){
+        shift_reg.lo_tile = (shift_reg.lo_tile & 0xFF00) | lo_bg_byte;
+        shift_reg.hi_tile = (shift_reg.hi_tile & 0xFF00) | hi_bg_byte;
+
+        shift_reg.lo_attr = (shift_reg.lo_attr & 0xFF00) | ((attr_byte & 0x1) ? 0xFF : 0x0);
+        shift_reg.hi_attr = (shift_reg.hi_attr & 0xFF00) | ((attr_byte & 0x2) ? 0xFF : 0x0);
+    };
+
+    auto UpdateShiftRegs = [&]()
+	{
+		if ((registers.mask & RENDER_BG) > 0)
+		{
+			// Shifting background tile pattern row
+			shift_reg.lo_tile <<= 1;
+			shift_reg.hi_tile <<= 1;
+
+			// Shifting palette attributes by 1
+			shift_reg.lo_attr <<= 1;
+			shift_reg.hi_attr <<= 1;
+		}
+	};
+
+    auto sprite_evalution = [&](){
+
+    };
+    
+    
+
+    if(scanline >= -1 && scanline < 240){
+        if(scanline == 0 && dot == 0){
+            dot = 1;
+        }
+
+        if(scanline == -1 && dot == 1){
+            registers.status &= ~(0x80);
+        }
+
+        if((dot >= 2 && dot < 258) || (dot >= 321 && dot < 338)){
+            UpdateShiftRegs();
+            switch((dot - 1) % 8){
+                case 0:
+                    //load next tile to shifter
+                    LoadNextTile();
+                    nt_byte = ppu_read(0x2000 | (vram_addr.reg & 0xFFF));
+                    break;
+                case 2:
+                    attr_byte = ppu_read(0x23C0 | (vram_addr.nametable_y << 11)
+                                                    | (vram_addr.nametable_x << 10)
+                                                    | ((vram_addr.coarse_y >> 2) << 3)
+                                                    | (vram_addr.coarse_x >> 2));
+                    if (vram_addr.coarse_y & 0x2) attr_byte >>= 4;
+                    if (vram_addr.coarse_x & 0x2) attr_byte >>= 2;
+                    attr_byte &= 0x3;
+                    
+                    break;
+                case 4:
+                    lo_bg_byte = ppu_read(((registers.control & 0x10)<<8)
+                                            + ((uint16_t)nt_byte << 4)
+                                            + (vram_addr.fine_y) + 0);
+                    break;
+                case 6:
+                    hi_bg_byte = ppu_read(((registers.control & 0x10)<<8)
+                                            + ((uint16_t)nt_byte << 4)
+                                            + (vram_addr.fine_y) + 8);
+                    break;
+                case 7:
+                    
+                    IncrementScrollX();
+                    break;
             }
         }
 
-        if(scanline == 262){
+        if(dot == 256){
+            IncrementScrollY();
+        }
 
+        if(dot == 257){
+            LoadNextTile();
+            
+            TransferAddrX();
+        }
+
+        if(dot >= 257 && dot < 321){
+            oam_addr = 0;
+        }
+
+        if(dot == 338 || dot == 340){
+            nt_byte = ppu_read(0x2000+(vram_addr.reg & 0xFFF));
+        }
+
+        if(scanline == -1 && dot >= 280 && dot < 305){
+            //std::cout<<"transferAddrY"<<std::endl;
+            TransferAddrY();
         }
     }
+
+    if(scanline == 240){
+        //do nothing
+    }
+
+    if((scanline >= 241) && (scanline < 261)){
+        if((scanline == 241) && (dot == 1)){
+            registers.status |= 0x80;
+            if((registers.control & 0x80) > 0){
+                //std::cout<<"NMI set"<<std::endl;
+                cpu->set_NMI();
+            }
+        }
+    }
+    
+    uint8_t pxl = 0x0;
+    uint8_t palette = 0x0;
+    if((registers.mask & RENDER_BG) > 0){
+       // std::cout<<"RENDERING"<<std::endl;
+        uint16_t mux = 0x8000 >> fine_x;
+
+        pxl = (((shift_reg.hi_tile & mux) > 0) << 1) | ((shift_reg.lo_tile & mux) > 0);
+        palette = (((shift_reg.hi_attr & mux) > 0) << 1) | ((shift_reg.lo_attr & mux) > 0);
+
+        //std::cout<<"PIXEL:"<<(uint16_t)pxl<<" PALETTE:"<<(uint16_t)palette<<std::endl;
+        //TracePPU();
+    }
+    uint16_t palette_index = ppu_read(0x3F00 + (palette << 2) + pxl) & 0x3F;
+
+    tuple<uint8_t,uint8_t,uint8_t> color = SYSTEM_PALETTE[palette_index];
+    
+    frame->set_pixel(dot-1,scanline,color);
+    dot++;
+    if (dot >= 341){
+        dot = 0;
+        scanline++;
+        if(scanline >= 261){
+            scanline = -1;
+            _nes_system->frame_completed();
+        }
+    }
+    ppu_cycle++;
 }
 
 /*
@@ -65,69 +359,12 @@ void nes_ppu::set_mirroring(bool _mirror){
     vert_mirror = _mirror;
 }
 
-/*
-    Setter/Getter for regular ppu registers
-*/
-void nes_ppu::PPUCTRL_w(uint8_t val){
-    if(~registers.PPUCTRL & val & CTRL_VBLANK) cpu->set_NMI();
-    registers.PPUCTRL = val;
-}
-
-void nes_ppu::PPUMASK_w(uint8_t val){ registers.PPUMASK = val; }
-
-uint8_t nes_ppu::PPUSTATUS_r(){
-    reset_latch(); 
-    return registers.PPUSTATUS;
-}
-
-uint8_t& nes_ppu::OAMADDR(){ return registers.OAMADDR; }
-uint8_t& nes_ppu::OAMDATA(){ return registers.OAMDATA; }
-
 void nes_ppu::OAMDMA_w(uint8_t val){ 
     registers.OAMDMA = val;
     //cpu->set_dma_req(val);
     cpu->set_dma_req();
 }
 
-/*
-    Write into VRAM through memory-mapped registers
-*/
-void nes_ppu::write_data(uint8_t val){
-    uint16_t addr = get_PPUADDR();
-    inc_PPUADDR();
-
-    if(addr < 0x2000){
-        cout<<"Writing to non-modifiable CHR-ROM or Palette Table..."<<endl;
-        exit(1);
-    }else if(addr < 0x3F00){
-        vram[mirror_addr(addr)] = val;
-    }else{
-        palette_table[(addr-0x3F00) % 0x20];
-    }
-    
-}
-
-/*
-
-*/
-uint8_t nes_ppu::read_data(){
-
-    uint16_t addr = get_PPUADDR();
-    uint8_t result = 0;
-    inc_PPUADDR();
-
-    if(addr < 0x2000){
-        result = read_buffer;
-        read_buffer = chrrom[addr];
-        return result;
-    }else if(addr < 0x3F00){
-        result = read_buffer;
-        read_buffer = vram[mirror_addr(addr)];
-        return result;
-    }else{
-        return palette_table[(addr-0x3F00) % 0x20];
-    }
-}
 
 uint16_t nes_ppu::mirror_addr(uint16_t addr){
     uint16_t mirror_down = addr & 0x2FFF; //
@@ -146,66 +383,11 @@ uint16_t nes_ppu::mirror_addr(uint16_t addr){
         case 3:
             vram_addr -= 0x800;
             break;
-
-        default:
-            cout<<"Error in address..."<<endl;
-            exit(1);
     }
     return vram_addr;
 }
 
-/*
-    Set both bytes of PPUADDR at once
-*/
-void nes_ppu::set_PPUADDR(uint16_t val){
-    registers.PPUADDR.value[0] = (val & 0xFF00)>>8;
-    registers.PPUADDR.value[1] = val & 0x00FF;
-}
-
-/*
-    Return PPUADDR as a single number
-*/
-uint16_t nes_ppu::get_PPUADDR(){
-    return (registers.PPUADDR.value[0]<<8) | registers.PPUADDR.value[1]; 
-}
-
-/*
-    Update one of two bytes of PPUADDR, mirrored to be inside 0x0000-0x3FFF
-*/
-void nes_ppu::PPUADDR_w(uint8_t val){
-    if(registers.PPUADDR.hi)
-        registers.PPUADDR.value[0] = val;
-    else
-        registers.PPUADDR.value[1] = val;
-    
-    // Mirror address
-    if(get_PPUADDR() > 0x3FFF) 
-        set_PPUADDR(get_PPUADDR()&0x3FFF);
-
-    registers.PPUADDR.hi = !registers.PPUADDR.hi;
-}
 
 uint8_t nes_ppu::vram_increment(){
-    if((registers.PPUCTRL & 0x04) == 0x04) return 32;
-    else return 1;
-}
-
-/*
-    Increment PPUADDR by 1 or 32
-*/
-void nes_ppu::inc_PPUADDR(){
-    uint8_t lo_byte = registers.PPUADDR.value[1];
-    registers.PPUADDR.value[1] += vram_increment();
-
-    if(lo_byte >= registers.PPUADDR.value[1]){
-        registers.PPUADDR.value[0] += 1;
-        registers.PPUADDR.value[0] %= 0x40;
-    }
-}
-
-/*
-    Resets condition to retrieve first (hi) byte for PPUADDR
-*/
-void nes_ppu::reset_latch(){
-    registers.PPUADDR.hi = true;
+    return ((registers.control & 0x04) == 0x04) ? 32 : 1;
 }

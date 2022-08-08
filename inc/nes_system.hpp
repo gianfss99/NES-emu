@@ -8,6 +8,9 @@
 #include "nes_memory.hpp"
 #include "nes_mapper.hpp"
 #include "frame.hpp"
+#include <SDL2/SDL.h>
+
+#define PIXEL_SIZE 3
 
 class nes_cpu;
 class nes_ppu;
@@ -26,7 +29,10 @@ private:
     std::vector<nes_component*> components;
     nes_mapper* _nes_mapper;
     nes_rom_loader* loader;
-    uint64_t master_cycle;    
+    uint64_t master_cycle;   
+    bool frame_complete; 
+
+    uint8_t controller[2];
 
 public:
     nes_system();
@@ -39,9 +45,15 @@ public:
     nes_memory* mem();
     nes_ppu* ppu();
     Frame* get_Frame();
+    void frame_completed();
 
 private:
     void init(char* rom);
+    void init_sdl();
+    SDL_Event event;
+    SDL_Renderer *renderer;
+    SDL_Window *window;
+    void draw();
 };
 
 #endif

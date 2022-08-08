@@ -61,6 +61,7 @@ nes_mapper* nes_rom_loader::read_rom(){
             std::cout<<"Correct_mapper"<<std::endl;
             break;
     }
+    rom.close();
 
     return mapper;
 }

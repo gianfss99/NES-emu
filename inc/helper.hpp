@@ -27,7 +27,7 @@ using namespace std;
 
 #define ALU_OP(op,offset,mode)                              \
             case alu_op_codes::op##_base + offset:          \
-                op_trace(#op,mode);                         \
+                if(debug) op_trace(#op,mode);                 \
                 op(mode);                                   \
                 break;
 
@@ -43,7 +43,7 @@ using namespace std;
 
 #define RMW_OP(op,offset,mode)                      \
             case rmw_op_codes::op##_base + offset:  \
-                op_trace(#op,mode);                 \
+                if(debug) op_trace(#op,mode);                 \
                 op(mode);                           \
                 break;                 
 
@@ -55,17 +55,19 @@ using namespace std;
             RMW_OP(op,0x1E,addr_mode::abs_x);
 
 #define IS_OP_MODE(op,opcode,mode) case opcode:             \
-                                        op_trace(#op,mode); \
+                                        if(debug) op_trace(#op,mode); \
                                         op(mode);           \
                                         break;
 
 #define IS_OP(op,opcode) case opcode:\
-                            op_trace(#op,addr_mode::impl);  \
+                            if(debug) op_trace(#op,addr_mode::impl);                 \
                             op(addr_mode::impl);            \
                             break;
 
 
 
 int get_file_size(FILE* fileptr);
+
+uint8_t reverse(uint8_t b);
 
 #endif

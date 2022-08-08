@@ -11,6 +11,8 @@ nes_cpu::nes_cpu(){
     curr_cycle = 0;
     _mem = nullptr;
     _nes_system = nullptr;
+    nmi_pending = false;
+    dma_pending = false;
 }
 
 nes_cpu::~nes_cpu(){}
@@ -18,12 +20,23 @@ nes_cpu::~nes_cpu(){}
 void nes_cpu::turn_on(nes_system *sys){
     _nes_system = sys;
     _mem = sys->mem();
+    reset_pending = true;
 }
 
-void nes_cpu::reset(){}
+void nes_cpu::reset(){
+    PC = read(0xFFFC) | (read(0xFFFD)<<8);
+    //P = (1<<5);
+    P = 0x20;
+    SP = 0x1FD;
+    A = 0;
+    X = 0;
+    Y = 0;
+
+
+}
 
 void nes_cpu::step_to(uint64_t master_cycle){
-    while(cpu_cycle < master_cycle){
+    while(cpu_cycle <= master_cycle){
         execute();
     }
 }
@@ -251,9 +264,17 @@ void nes_cpu::execute(){
 
     
     curr_cycle = 0;
+    P ^= SET_FLAG(GET_FLAG(P,BFLAG),BFLAG);
 
+    if(reset_pending){
+        reset();
+        cpu_cycle += 7;
+        reset_pending = false;        
+        return;
+    }
     if(nmi_pending){
         NMI();
+        //std::cout<<"NMI trigger"<<std::endl;
         nmi_pending = false;
         cpu_cycle+=7;
         return;
@@ -268,7 +289,7 @@ void nes_cpu::execute(){
     
     uint16_t old_PC = PC;
     uint8_t instr = fetch_instr();
-    
+    bool debug = false;
     switch(instr){
         
         // Force Interrupt Op
@@ -407,9 +428,9 @@ void nes_cpu::execute(){
         IS_OP(TSX,0xBA);
 
 
-        default:
-            std::cout<<"invalid instruction: "<<std::hex<<(int)instr<<std::endl;
-            exit(1);
+        // default:
+        //     std::cout<<"invalid instruction: "<<std::hex<<(int)instr<<std::endl;
+        //     exit(1);
 
     }
 

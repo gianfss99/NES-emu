@@ -91,6 +91,7 @@ private:
     uint8_t P;      // flags register (N V - B D I Z C)
     bool nmi_pending;
     bool dma_pending;
+    bool reset_pending;
     //dma_request dma_req;
     int cpu_cycle;
     int curr_cycle;

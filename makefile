@@ -10,10 +10,10 @@ TARGETS := main
 all: $(TARGETS)
 
 %.o: %.cpp
-	$(CXX) -o $@ -c $< $(CXXFLAGS) `sdl2-config --cflags --libs`
+	$(CXX) -o $@ -c $< $(CXXFLAGS) 
 
 main: $(OBJS)
-	$(CXX) -o main $(OBJS) `sdl2-config --cflags --libs`
+	$(CXX) -o main $(OBJS) -Ldeps/lib -lSDL2main -lSDL2
 
 clean:
 	rm -rf *.o src/*.o $(TARGETS)
