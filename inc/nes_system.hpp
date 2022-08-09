@@ -46,12 +46,14 @@ public:
     nes_ppu* ppu();
     Frame* get_Frame();
     void frame_completed();
+    SDL_Renderer *renderer;
+    uint8_t fps = 0x1;
 
 private:
     void init(char* rom);
     void init_sdl();
     SDL_Event event;
-    SDL_Renderer *renderer;
+    
     SDL_Window *window;
     void draw();
 };
