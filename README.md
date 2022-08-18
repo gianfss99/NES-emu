@@ -13,4 +13,4 @@ The graphical output and controller input are achieved using SDL2.
 This project was meant to familiarize myslef with hardware virtualization, going through lots of 
 documentation, and design a system that performs accurately and efficiently.
 
-![](https://github.com/NES-emu/DK_gameplay.gif)
+![](https://github.com/gianfss99/NES-emu/blob/main/DK_gameplay.gif)
