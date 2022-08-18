@@ -32,7 +32,7 @@ private:
     uint64_t master_cycle;   
     bool frame_complete; 
 
-    uint8_t controller[2];
+    
 
 public:
     nes_system();

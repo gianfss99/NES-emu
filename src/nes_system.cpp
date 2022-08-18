@@ -55,14 +55,39 @@ void nes_system::step(uint64_t _cycle){
     _nes_ppu->step_to(master_cycle);
     master_cycle += _cycle;
     if(frame_complete){
-        std::cout<<std::dec<<(int)fps<<std::endl;
+        //std::cout<<std::dec<<(int)fps<<std::endl;
         fps = (fps % 60) + 1;
         draw();
         frame_complete = false;
         frame->updated = false;
     }
+
+    
+
     SDL_PollEvent(&event);
         switch(event.type){
+                case SDL_KEYDOWN:
+                    //_nes_mem->controller[0] = 0x0;
+                    if(event.key.keysym.sym == SDLK_k) _nes_mem->controller[0] |= 0x01; // A
+                    if(event.key.keysym.sym == SDLK_j) _nes_mem->controller[0] |= 0x02; // B
+                    if(event.key.keysym.sym == SDLK_v) _nes_mem->controller[0] |= 0x04; // Select
+                    if(event.key.keysym.sym == SDLK_b) _nes_mem->controller[0] |= 0x08; // Start
+                    if(event.key.keysym.sym == SDLK_w) _nes_mem->controller[0] |= 0x10; // Up
+                    if(event.key.keysym.sym == SDLK_s) _nes_mem->controller[0] |= 0x20; // Down
+                    if(event.key.keysym.sym == SDLK_a) _nes_mem->controller[0] |= 0x40; // Left
+                    if(event.key.keysym.sym == SDLK_d) _nes_mem->controller[0] |= 0x80; // Right
+                    //std::cout<<(uint16_t)_nes_mem->controller[0]<<std::endl;
+                    break;
+                case SDL_KEYUP:
+                    if(event.key.keysym.sym == SDLK_k) _nes_mem->controller[0] &= ~(0x01); // A
+                    if(event.key.keysym.sym == SDLK_j) _nes_mem->controller[0] &= ~(0x02); // B
+                    if(event.key.keysym.sym == SDLK_v) _nes_mem->controller[0] &= ~(0x04); // Select
+                    if(event.key.keysym.sym == SDLK_b) _nes_mem->controller[0] &= ~(0x08); // Start
+                    if(event.key.keysym.sym == SDLK_w) _nes_mem->controller[0] &= ~(0x10); // Up
+                    if(event.key.keysym.sym == SDLK_s) _nes_mem->controller[0] &= ~(0x20); // Down
+                    if(event.key.keysym.sym == SDLK_a) _nes_mem->controller[0] &= ~(0x40); // Left
+                    if(event.key.keysym.sym == SDLK_d) _nes_mem->controller[0] &= ~(0x80); // Right
+                    break;
                 case SDL_QUIT:
                     SDL_DestroyRenderer(renderer);
                     SDL_DestroyWindow(window);
@@ -106,10 +131,10 @@ void nes_system::init_sdl(){
 void nes_system::draw(){
     // SDL_SetRenderDrawColor(renderer,0,0,0,0);
     // SDL_RenderClear(renderer);
-    if(!frame->updated) {
-        frame->rects.clear();
-        return;
-    };
+    // if(!frame->updated) {
+    //     frame->rects.clear();
+    //     return;
+    // };
     // for (int y = 0; y < HEIGHT; y++){
     //     for(int x = 0; x < WIDTH; x++){
     //         //create rectangle to create pixel (each px is a 5x5 px rectangle)

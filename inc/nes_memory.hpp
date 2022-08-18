@@ -39,6 +39,10 @@ private:
     nes_ppu *ppu;
 
 public:
+
+    uint8_t controller[2] = {0};
+    uint8_t controller_state[2] = {0};
+
     nes_memory();
     ~nes_memory();
     void SET(uint16_t addr, uint8_t val);

@@ -290,6 +290,7 @@ void nes_cpu::execute(){
     uint16_t old_PC = PC;
     uint8_t instr = fetch_instr();
     bool debug = false;
+    
     switch(instr){
         
         // Force Interrupt Op
@@ -437,10 +438,10 @@ void nes_cpu::execute(){
 
     cpu_cycle += curr_cycle;
 
-    if(old_PC == PC){
-        std::cout<<"Entered infinite loop"<<std::endl;
-        exit(1);
-    }
+    // if(old_PC == PC){
+    //     std::cout<<"Entered infinite loop"<<std::endl;
+    //     exit(1);
+    // }
 }
 
 /*

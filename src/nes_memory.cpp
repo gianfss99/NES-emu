@@ -27,17 +27,18 @@ void nes_memory::SET(uint16_t addr, uint8_t val){
         ppu->cpu_write(addr & 0x7,val);           
         //std::cout<<std::hex<<"PPUWRITE: "<<(uint16_t)val<<"@"<<addr<<std::endl;
 
-    }else if(addr < IOREGS){
-        switch(addr){
-            case 0x4014:
-                ppu->OAMDMA_w(val);
-                break;
-            // default:
-            //     cout<<"INVALID WRITE TO REGISTER "<<std::hex<<addr<<endl;
-            //     exit(1);
-        }
+    }else if(addr == 0x4014){
+        
+        ppu->OAMDMA_w(val);
+    }
 
-    }else{
+    else if(addr == 0x4016 || addr == 0x4017){
+        controller_state[addr & 0x1] = controller[addr & 0x1];
+        
+
+    }
+    
+    else{
         ram[addr] = val;
     }
 }
@@ -54,11 +55,18 @@ uint8_t nes_memory::PEEK(uint16_t addr){
         data = ppu->cpu_read(addr & 0x7);
         //std::cout<<std::hex<<"PPUREAD: "<<addr<<std::endl;
     }
+    else if(addr == 0x4016 || addr == 0x4017){
+        data = (controller_state[addr & 0x1] & 0x1) > 0;
+        controller_state[addr & 0x1] >>= 1;
+        //std::cout<<std::hex<<(uint16_t)controller_state[addr & 0x1]<<std::endl;
+
+        //std::cout<<"Input read"<<std::endl;
+    }
     else data = ram[addr];
     return data;
 }
 
 void nes_memory::SET_CHUNK(uint16_t addr, vector<uint8_t> chunk){
     memcpy(&ram[0]+addr,chunk.data(),chunk.size());
-    std::cout<<"CHUNK SET"<<std::endl;
+    //std::cout<<"CHUNK SET"<<std::endl;
 }

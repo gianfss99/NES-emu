@@ -58,7 +58,6 @@ nes_mapper* nes_rom_loader::read_rom(){
     switch(mapper_id){
         case 0:
             mapper = new mapper_nrom(prgrom,chrrom,trainer,flags);
-            std::cout<<"Correct_mapper"<<std::endl;
             break;
     }
     rom.close();

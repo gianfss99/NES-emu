@@ -80,6 +80,11 @@ private:
         uint16_t hi_tile = 0x00;
     } shift_reg;
     
+    uint8_t secondary_oam[32] = {0};
+    uint8_t sprite_shifter_hi[8] = {0};
+    uint8_t sprite_shifter_lo[8] = {0};
+    uint8_t sprite_count = 0;
+
 
     //thanks to loopy for this implementation of PPUADDR
     union loopy_register{
@@ -114,14 +119,6 @@ private:
     //current pixel being processed
     uint16_t dot;
     signed short scanline;
-    // uint8_t tile_x;
-    // uint8_t tile_y;
-    // uint16_t render_addr;
-
-    //latches (store next tile info)
-    uint8_t at_latch;
-    uint8_t lo_bg_latch;
-    uint8_t hi_bg_latch;
 
     //temp variables
     uint8_t nt_byte;
@@ -142,6 +139,7 @@ private:
     uint16_t mirror_addr(uint16_t addr);
     uint8_t ppu_read(uint16_t addr);
     void ppu_write(uint16_t addr, uint8_t data);
+    uint8_t read_palette(uint16_t addr);
 
 public:
     nes_ppu();
