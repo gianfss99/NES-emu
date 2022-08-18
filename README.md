@@ -14,3 +14,5 @@ This project was meant to familiarize myslef with hardware virtualization, going
 documentation, and design a system that performs accurately and efficiently.
 
 ![](https://github.com/gianfss99/NES-emu/blob/main/DK_gameplay.gif)
+
+Next stop: GameBoy Advance
